@@ -1,0 +1,45 @@
+{
+  "__COMMENT__": "Standard YOLOv8 COCO Class Mappings",
+
+  "bottle": "R",
+  "wine glass": "R",
+  "cup": "T",
+  "bowl": "T",
+  "can": "R",
+
+  "fork": "T",
+  "knife": "T",
+  "spoon": "T",
+
+  "banana": "T",
+  "apple": "T",
+  "sandwich": "T",
+  "orange": "T",
+  "broccoli": "T",
+  "carrot": "T",
+  "hot dog": "T",
+  "pizza": "T",
+  "donut": "T",
+  "cake": "T",
+
+  "chair": "T",
+  "potted plant": "T",
+  "mouse": "T",
+  "keyboard": "T",
+  "cell phone": "T",
+  "laptop": "T",
+  "remote": "T",
+  "book": "R",
+  "vase": "T",
+  "scissors": "T",
+  "teddy bear": "T",
+  "toothbrush": "T",
+
+  "bottle": "R",
+  "cup": "T",
+  "cell phone": "T",
+  "scissors": "T",
+  "toothbrush": "T", 
+  "knife": "T",
+  "book": "R"
+}

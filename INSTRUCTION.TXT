@@ -1,0 +1,16 @@
+1) A system is under design. Its a trash sorting system which allows objects to be identified as a trash or recyclables. 
+2) Code from a VSCode environment communicates with a UNO Rev3 chip. The UNO is responsible receiving codes in the serial connection as T or R, representing Trash or Recyclable. UNO sends signal to a stepper motor to turn clockwise or anticlockwise to complete the sorting process.
+3) A USB connected camera takes the pictures, sends it to a Yolo object detection system using a standard pretrained model along with combination of other models to determine the best detection possible. When a good decision is made, it will send the UNO signals like T or R for this system to go into one cycle.
+4) There is a need to address activities such as time users are putting objects for camera to detect, time for system to understand and determine the best possible object class as trash or recyclable, and send signal to UNO. UNO then takes time to determine the process completion and be prepared for a new process to repeat.
+5) The structure of files are meant to be like this.
+	a) main.py - This file will be the main executable for the system.
+	b) settings.json - This file will be a configuration file to keep variables as a separate settings. Items such as yolo detection parameters, the UNO signal codes, folder to point to external databases and pretrained models etc etc.
+	c) MODELS folder - This is where the YOLO trained models are kept. There will be a multiple models capable of detecting objects. Along with a custom pretrained model. In settings.json these models will be picked with giving names that the system will use for the session.
+	d) class_map.json - This is where a simple database of objects along with their classification such as T or R is identified. This will be a AI generated list of common house hold items, office items, items that people throw in the trash, classified.
+6) The YOLO object detection needs to create a background neutral and help determine what is new. Keep in mind that there camera will see a moving platform during execution of the UNO stepper motor interaction. After every execution UNO will tell the system that it completed the process. This is where the system should establish the background image and prepare the system for new object identification. 
+7) Interface:
+	a) Need a subtle information log for the active system.
+	b) Need a UNO communication status log visible at all times.
+	c) S to start the detection system, R to reset the background when necessary, Q to quit the active session at anytime.
+8) The YOLO detection should compensate for the time it takes for users to put objects and a time frame where everything settles so that the detection of the object is more accurate before it sends signal to the UNO system. 
+9) understand the gravity of the sequence when the system is ready, when the users are actively loading objects, when things are settled, when information is generated, and finally when the UNO is ready for taking new orders. This is key for this to work successfully.

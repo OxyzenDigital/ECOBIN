@@ -1,0 +1,30 @@
+{
+    "serial": {
+        "port": "COM3",
+        "baud_rate": 9600
+    },
+    "camera": {
+        "index": 1,
+        "width": 640,
+        "height": 480
+    },
+    "yolo": {
+        "standard_model": "MODELS/yolov8n.pt",
+        "custom_model": "MODELS/custom_trash.pt",
+        "confidence_threshold": 0.5,
+        "iou_threshold": 0.4
+    },
+    "timing": {
+        "settle_delay_s": 2.0,
+        "detection_cooldown_s": 5.0
+    },
+    "codes": {
+        "trash": "T",
+        "recyclable": "R",
+        "uno_ready": "A",
+        "uno_busy": "B"
+    },
+    "paths": {
+        "class_map": "class_map.json"
+    }
+}
