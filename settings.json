@@ -1,6 +1,6 @@
 {
     "serial": {
-        "port": "COM3",
+        "port": "COM4",
         "baud_rate": 9600
     },
     "camera": {
@@ -10,7 +10,7 @@
     },
     "yolo": {
         "standard_model": "MODELS/yolov8n.pt",
-        "custom_model": "MODELS/custom_trash.pt",
+        "custom_model": "MODELS/UPLIFT_TRAINED.pt",
         "confidence_threshold": 0.5,
         "iou_threshold": 0.4
     },

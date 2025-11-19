@@ -41,5 +41,14 @@
   "scissors": "T",
   "toothbrush": "T", 
   "knife": "T",
-  "book": "R"
+  "book": "R",
+
+  "crumpled_paper": "R",
+  "water_bottle": "R",
+  "tissue": "T",
+  "crumpled_water_bottle": "R",
+  "banana_peel": "T",
+  "plastics": "R",
+  "orange_peel": "T",
+  "apple_core": "T"
 }

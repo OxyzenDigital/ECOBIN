@@ -1,143 +1,149 @@
 // --- DM420Y Stepper Motor Control (Pulse/Direction) ---
-// Corrected for simplified DM420Y terminal block (PU, DR, 5V+, MF)
-// This code manages the READY/BUSY state via Serial communication.
+// Includes LIVE vs TEST mode toggle for Arduino IDE Serial testing.
+
+// ------------------------------------------------------
+//                   MODE SELECTOR
+// ------------------------------------------------------
+// true  = TEST MODE (You type R/T/X in Arduino Serial Monitor)
+// false = LIVE MODE (Arduino ONLY accepts commands from external program)
+const bool TEST_MODE = true;
+// ------------------------------------------------------
+
 
 // --- HARDWARE CONFIGURATION ---
-const int STEP_PIN = 9;   // Connect to DM420Y's PU (Pulse)
-const int DIR_PIN = 8;    // Connect to DM420Y's DR (Direction)
-const int MF_PIN = 10;    // Connect to DM420Y's MF (Motor Free/Enable)
+const int STEP_PIN = 9;   // PU+
+const int DIR_PIN  = 8;   // DR+
+const int MF_PIN   = 10;  // MF (Enable)
 
-// Motor parameters (NEMA 17, 200 steps/rev)
-// *** UPDATED: Now targeting 90 degrees. If driver is set to 1/10 microstepping (2000 steps/rev), 
-// 90 degrees requires 500 steps (2000 steps / 360 deg * 90 deg = 500 steps). ***
-// Adjust this number if your microstepping DIP switches are different!
-const int STEPS_FOR_MOVEMENT = 3500; 
+// Step parameters (adjust for your microstepping)
+const int STEPS_FOR_MOVEMENT = 3500;
+const int PULSE_DELAY_US = 250;
 
-// *** UPDATED: Increased speed 10x by reducing the delay. ***
-// Speed adjustment: Reduce this value to go faster. If motor stalls, increase it slightly.
-const int PULSE_DELAY_US = 250; 
-
-// --- STATE AND CONTROL VARIABLES ---
+// State machine
 enum SystemState { READY, BUSY };
 SystemState currentState = READY;
 
-// Serial Communication Signals
-const char READY_SIGNAL = 'A'; 
-const char BUSY_SIGNAL  = 'B'; 
-const char RECYCLE_COMMAND = 'R'; // Clockwise
-const char TRASH_COMMAND   = 'T'; // Counter-Clockwise
-const char RESET_COMMAND   = 'X'; 
+// Serial Commands
+const char READY_SIGNAL = 'A';
+const char BUSY_SIGNAL  = 'B';
+const char RECYCLE_COMMAND = 'R';
+const char TRASH_COMMAND   = 'T';
+const char RESET_COMMAND   = 'X';
 
-// --- SETUP ---
+
+// ------------------------------------------------------
+// SETUP
+// ------------------------------------------------------
 void setup() {
-  // Set the control pins as outputs
   pinMode(STEP_PIN, OUTPUT);
   pinMode(DIR_PIN, OUTPUT);
   pinMode(MF_PIN, OUTPUT);
-  
-  // Initialize Serial communication
+
   Serial.begin(9600);
-  Serial.println("--- DM420Y Stepper Control Initialized (PUL/DIR) ---");
-  Serial.println("CURRENT ANGLE: 90 degrees (500 steps). CURRENT SPEED: 500 us delay.");
-  Serial.println("CHECK DIP SWITCHES: Ensure current (SW1-SW3) is set for 2.0A!");
-  Serial.println("CHECK DIP SWITCHES: Ensure microstepping (SW5-SW8) matches the STEPS_FOR_MOVEMENT value!");
-  
-  // 1. Ensure control pins start low
+  Serial.println();
+  Serial.println("-------------------------------------------");
+  Serial.println(" DM420Y Stepper Control Initialized");
+  Serial.println("-------------------------------------------");
+
+  if (TEST_MODE) {
+    Serial.println(" MODE: TEST MODE (type R, T, X in Serial Monitor)");
+  } else {
+    Serial.println(" MODE: LIVE MODE (Serial Monitor input ignored)");
+  }
+  Serial.println("-------------------------------------------");
+
   digitalWrite(STEP_PIN, LOW);
   digitalWrite(DIR_PIN, LOW);
 
-  // 2. ENABLE THE DRIVER: MF pin must be LOW to keep the motor coils powered/enabled.
+  // Enable driver
   digitalWrite(MF_PIN, LOW);
-  Serial.println("DM420Y Driver Enabled (MF pin LOW).");
+  Serial.println("DM420Y Driver Enabled (MF LOW).");
 
   sendReadySignal();
 }
 
-// --- MAIN LOOP ---
+
+// ------------------------------------------------------
+// LOOP
+// ------------------------------------------------------
 void loop() {
+
+  // ------------------------------------------------------
+  // LIVE MODE
+  // ------------------------------------------------------
+  if (!TEST_MODE) {
+    if (Serial.available() > 0) {
+      // Human typing is NOT allowed in LIVE mode
+      Serial.println("LIVE MODE: Manual typing ignored.");
+      Serial.read();  // clear buffer
+    }
+    return;  // external system still sends Serial commands normally
+  }
+
+
+  // ------------------------------------------------------
+  // TEST MODE (Arduino IDE manual control)
+  // ------------------------------------------------------
   if (Serial.available() > 0) {
     char command = Serial.read();
 
     if (command == RECYCLE_COMMAND && currentState == READY) {
       Serial.print("Command received: R (Recycle). ");
-      runSortSequence(HIGH); // HIGH for Clockwise (Recycle)
-    } else if (command == TRASH_COMMAND && currentState == READY) {
+      runSortSequence(HIGH);
+    }
+    else if (command == TRASH_COMMAND && currentState == READY) {
       Serial.print("Command received: T (Trash). ");
-      runSortSequence(LOW); // LOW for Counter-Clockwise (Trash)
-    } else if (command == RESET_COMMAND) {
+      runSortSequence(LOW);
+    }
+    else if (command == RESET_COMMAND) {
       currentState = READY;
-      Serial.println("System reset manually (X command).");
+      Serial.println("System reset manually (X).");
       sendReadySignal();
-    } else if (currentState == BUSY) {
-        Serial.print("System is BUSY, rejecting command: ");
-        Serial.println(command);
-    } 
-  } 
+    }
+    else if (currentState == BUSY) {
+      Serial.print("System BUSY, rejecting: ");
+      Serial.println(command);
+    }
+  }
 }
 
-// --- HELPER FUNCTIONS ---
 
+// ------------------------------------------------------
+// HELPER FUNCTIONS
+// ------------------------------------------------------
 void sendReadySignal() {
   currentState = READY;
   Serial.write(READY_SIGNAL);
-  Serial.println("System is READY (A).");
+  Serial.println("System READY (A).");
 }
 
 void sendBusySignal() {
   currentState = BUSY;
   Serial.write(BUSY_SIGNAL);
-  Serial.println("Starting sequence... System is BUSY (B).");
+  Serial.println("System BUSY (B).");
 }
 
-/**
- * Generates the necessary step pulses for the DM420Y driver.
- */
 void makeSteps(int steps) {
   for (int i = 0; i < steps; i++) {
-    // 1. Send HIGH pulse
     digitalWrite(STEP_PIN, HIGH);
     delayMicroseconds(PULSE_DELAY_US);
-    
-    // 2. Send LOW pulse (The falling edge (HIGH to LOW) triggers the step)
     digitalWrite(STEP_PIN, LOW);
     delayMicroseconds(PULSE_DELAY_US);
   }
 }
 
-/**
- * Executes the full sorting sequence (turn, wait, return).
- */
 void runSortSequence(int dirState) {
-  // 1. Signal BUSY
   sendBusySignal();
 
-  // 2. Set the direction for the first movement
   digitalWrite(DIR_PIN, dirState);
-  
-  Serial.print("Moving 90 degrees (");
-  Serial.print(STEPS_FOR_MOVEMENT);
-  Serial.print(" steps) in direction: ");
-  Serial.println((dirState == HIGH ? "Clockwise" : "Counter-Clockwise"));
-  
-  // Execute the movement
   makeSteps(STEPS_FOR_MOVEMENT);
 
-  // 3. Wait for 5 seconds (The holding/dump time)
-  Serial.println("Holding position for 2 seconds...");
+  Serial.println("Holding for 2 seconds...");
   delay(2000);
 
-  // 4. Turn back to the original position
-  // Reverse the direction state for the return trip
-  int returnDirState = (dirState == HIGH) ? LOW : HIGH;
-  digitalWrite(DIR_PIN, returnDirState);
-  
-  Serial.println("Returning to home position...");
-  
-  // Execute the return movement (same number of steps)
+  digitalWrite(DIR_PIN, (dirState == HIGH ? LOW : HIGH));
   makeSteps(STEPS_FOR_MOVEMENT);
-  
-  Serial.println("Sequence complete.");
 
-  // 5. Signal READY
+  Serial.println("Sequence complete.");
   sendReadySignal();
 }

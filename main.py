@@ -35,11 +35,8 @@ current_state = STATE_IDLE
 last_state_change = time.time()
 settle_start_time = 0
 
-# --- DIAGNOSTICS VARIABLES ---
-last_tx = "None"   # Last command sent to UNO
-last_rx = "None"   # Last message received from UNO
-rx_timer = 0       # To flash the RX light
-serial_log = collections.deque(maxlen=8)
+# --- LOGGING ---
+serial_log = collections.deque(maxlen=10)
 
 # --- HARDWARE: CAMERA ---
 print(f"[-] Opening Camera Index {settings['camera']['index']}...")
@@ -54,14 +51,12 @@ if not cap.isOpened():
 # --- HARDWARE: ARDUINO ---
 print("[-] Connecting to Arduino...")
 try:
-    # [cite: 13] Serial.begin(9600)
     arduino = serial.Serial(settings['serial']['port'], settings['serial']['baud_rate'], timeout=0.05)
-    time.sleep(2) # Wait for UNO reboot
+    time.sleep(2)
     arduino_status = "ONLINE"
-    
-    # Clear any startup junk
+    # Clear buffers on connect so old commands don't execute
     arduino.reset_input_buffer()
-    
+    arduino.reset_output_buffer()
 except Exception as e:
     arduino = None
     arduino_status = "OFFLINE"
@@ -85,64 +80,81 @@ print(f"[-] System Ready! [{time.time() - start_time:.2f}s]")
 
 # --- FUNCTIONS ---
 def log_message(msg, type="INFO"):
-    global last_tx, last_rx, rx_timer
     timestamp = time.strftime("%H:%M:%S")
-    
-    if type == "TX": 
-        last_tx = msg
-        prefix = ">>"
-    elif type == "RX": 
-        last_rx = msg
-        rx_timer = 10 # Frames to keep RX light bright
-        prefix = "<<"
-    else: 
-        prefix = "--"
-        
+    prefix = ">>" if type == "TX" else "<<" if type == "RX" else "--"
     serial_log.append(f"[{timestamp}] {prefix} {msg}")
 
 def send_to_arduino(signal):
+   # [cite: 25] "Understand the gravity of the sequence... when UNO is ready"
+    # STRICT CHECK: Do not send if we think we are busy, unless it's a reset
+    if current_state == STATE_BUSY and signal != 'X':
+        log_message("Blocked: System Busy", "INFO")
+        return False
+
     if arduino:
         try:
-            # [cite: 10, 11] UNO expects char 'T' or 'R'
             arduino.write(signal.encode())
             log_message(f"SENT: {signal}", "TX")
             return True
-        except Exception as e:
-            log_message(f"Write Err: {e}", "INFO")
-    else:
-        log_message(f"SIMULATED: {signal}", "TX")
+        except:
+            pass
     return False
 
 def run_live_detection(frame):
-    results = model_std(frame, verbose=False, conf=viz_threshold)[0]
+    """
+    Run Standard + Custom models.
+    Compare confidence scores to find the single BEST match.
+    """
+    # 1. Run Standard Model
+    results_std = model_std(frame, verbose=False, conf=viz_threshold)[0]
+    
+    # 2. Run Custom Model (If it exists)
+    results_cust = None
+    if has_custom_model:
+        results_cust = model_custom(frame, verbose=False, conf=viz_threshold)[0]
+
     best_conf = 0
     best_name = None
     viz_frame = frame.copy()
 
-    for box in results.boxes:
-        conf = float(box.conf[0])
-        cls_id = int(box.cls[0])
-        name = results.names[cls_id]
-        x1, y1, x2, y2 = map(int, box.xyxy[0])
+    # Helper to process a list of results
+    def process_results(results, label_suffix=""):
+        nonlocal best_conf, best_name
         
-        if name in class_map:
-            classification = class_map[name]
-            color = (0, 0, 255) if classification == "T" else (0, 255, 0)
-            label = f"{name} [{classification}]"
-            if conf > best_conf:
-                best_conf = conf
-                best_name = name
-        else:
-            color = (100, 100, 100) 
-            label = f"{name} (?)"
+        for box in results.boxes:
+            conf = float(box.conf[0])
+            cls_id = int(box.cls[0])
+            name = results.names[cls_id]
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            
+            # LOGIC: Comparison Tournament
+            # We track the highest confidence seen so far across BOTH models
+            if name in class_map:
+                classification = class_map[name]
+                color = (0, 0, 255) if classification == "T" else (0, 255, 0)
+                label = f"{name} [{classification}] {int(conf*100)}%"
+                
+                # If this detection is better than the previous best, it becomes the winner
+                if conf > best_conf:
+                    best_conf = conf
+                    best_name = name
+            else:
+                # Unknown Item (Grey)
+                color = (100, 100, 100) 
+                label = f"{name} (?)"
 
-        cv2.rectangle(viz_frame, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(viz_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+            # Draw Box
+            cv2.rectangle(viz_frame, (x1, y1), (x2, y2), color, 2)
+            cv2.putText(viz_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+    # Run the processing for both sets of results
+    process_results(results_std)
+    if results_cust:
+        process_results(results_cust)
 
     return viz_frame, best_name, best_conf
 
 def draw_dashboard(camera_frame):
-    global rx_timer
     h, w, _ = camera_frame.shape
     sidebar_w = 350
     canvas = np.zeros((h, w + sidebar_w, 3), dtype=np.uint8)
@@ -150,52 +162,40 @@ def draw_dashboard(camera_frame):
     canvas[0:h, 0:w] = camera_frame
     cv2.rectangle(canvas, (w, 0), (w + sidebar_w, h), (30, 30, 30), -1)
     
-    # --- HEADER & CONNECTION LIGHT ---
-    cv2.putText(canvas, "ECOBIN DIAGNOSTIC", (w + 20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150), 1)
+    # Header
+    cv2.putText(canvas, "ECOBIN STATUS", (w + 20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (150, 150, 150), 1)
     
-    # Connection Light (Circle)
-    light_color = (0, 255, 0) if arduino_status == "ONLINE" else (0, 0, 255)
-    cv2.circle(canvas, (w + 320, 30), 10, light_color, -1) 
-    cv2.putText(canvas, arduino_status, (w + 220, 35), cv2.FONT_HERSHEY_PLAIN, 1.0, (255, 255, 255), 1)
-
-    # --- SERIAL MONITOR BOX ---
-    # Draw a "screen" for TX/RX
-    cv2.rectangle(canvas, (w + 20, 60), (w + sidebar_w - 20, 150), (0, 0, 0), -1)
-    cv2.rectangle(canvas, (w + 20, 60), (w + sidebar_w - 20, 150), (100, 100, 100), 1)
-    
-    # TX Line
-    cv2.putText(canvas, "LAST TX (Sent):", (w + 30, 85), cv2.FONT_HERSHEY_PLAIN, 0.9, (150, 150, 150), 1)
-    cv2.putText(canvas, last_tx, (w + 160, 85), cv2.FONT_HERSHEY_PLAIN, 1.0, (0, 255, 0), 1)
-    
-    # RX Line
-    rx_color = (0, 200, 255) if rx_timer > 0 else (150, 150, 150)
-    cv2.putText(canvas, "LAST RX (Recv):", (w + 30, 115), cv2.FONT_HERSHEY_PLAIN, 0.9, rx_color, 1)
-    # Truncate RX if too long
-    disp_rx = (last_rx[:20] + '..') if len(last_rx) > 20 else last_rx
-    cv2.putText(canvas, disp_rx, (w + 160, 115), cv2.FONT_HERSHEY_PLAIN, 1.0, rx_color, 1)
-
-    if rx_timer > 0: rx_timer -= 1
-
-    # --- STATUS ---
+    # State Colors
     st_c = (0, 255, 0)
     if current_state == STATE_BUSY: st_c = (0, 255, 255)
     if current_state == STATE_DETECTING: st_c = (255, 0, 255)
     if current_state == STATE_WAITING_OBJECT: st_c = (255, 255, 255)
     
-    cv2.putText(canvas, f"STATE: {current_state}", (w + 20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.7, st_c, 2)
+    cv2.putText(canvas, current_state, (w + 20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.0, st_c, 2)
     
-    # --- LOGS ---
-    y_start = 220
+    # UNO Status
+    conn_color = (0, 255, 0) if arduino_status == "ONLINE" else (0, 0, 255)
+    cv2.putText(canvas, f"UNO: {arduino_status}", (w + 20, 120), cv2.FONT_HERSHEY_PLAIN, 1.2, conn_color, 1)
+    
+    cv2.line(canvas, (w + 20, 140), (w + sidebar_w - 20, 140), (80, 80, 80), 1)
+    
+    # Logs
+    y_start = 170
     for i, line in enumerate(serial_log):
         c = (180, 180, 180)
-        if "TX" in line: c = (0, 255, 0)
-        if "RX" in line: c = (0, 200, 255)
+        if ">>" in line: c = (0, 255, 0)
+        if "<<" in line: c = (0, 200, 255)
         if "MATCH" in line: c = (255, 0, 255)
-        cv2.putText(canvas, line, (w + 10, y_start + (i * 20)), cv2.FONT_HERSHEY_PLAIN, 0.9, c, 1)
+        cv2.putText(canvas, line, (w + 10, y_start + (i * 25)), cv2.FONT_HERSHEY_PLAIN, 0.9, c, 1)
 
-    # --- FOOTER ---
-    cv2.putText(canvas, "TEST: [1] Trash  [2] Recycle", (w + 20, h - 50), cv2.FONT_HERSHEY_PLAIN, 1.0, (0, 255, 255), 1)
-    cv2.putText(canvas, "CTRL: [S] Start  [R] Reset", (w + 20, h - 20), cv2.FONT_HERSHEY_PLAIN, 1.0, (100, 100, 100), 1)
+    # Controls Footer
+    # Dynamic Text based on Busy State
+    if current_state == STATE_BUSY:
+        cv2.putText(canvas, "KEYS LOCKED (BUSY)", (w + 20, h - 50), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 0, 255), 2)
+    else:
+        cv2.putText(canvas, "TEST: [1] Trash  [2] Recycle", (w + 20, h - 50), cv2.FONT_HERSHEY_PLAIN, 1.0, (0, 255, 255), 1)
+        
+    cv2.putText(canvas, "CTRL: [S] Start  [R] Reset  [Q] Quit", (w + 20, h - 20), cv2.FONT_HERSHEY_PLAIN, 1.0, (100, 100, 100), 1)
     
     return canvas
 
@@ -204,47 +204,44 @@ while True:
     ret, frame = cap.read()
     if not ret: break
 
-    # --- READ ARDUINO (PARSER) ---
+    # --- 1. READ ARDUINO ---
+    # Check input buffer to see if UNO is done
     if arduino and arduino.in_waiting > 0:
         try:
-            # [cite: 19, 21] UNO prints text like "Command received..."
-            # We read everything available to clear the buffer and log it
-            raw_bytes = arduino.read(arduino.in_waiting) 
+            raw_bytes = arduino.read(arduino.in_waiting)
             raw_str = raw_bytes.decode('utf-8', errors='ignore').strip()
             
             if raw_str:
-                # Split by newline in case we got multiple messages
                 lines = raw_str.split('\n')
                 for line in lines:
-                    clean_line = line.strip()
-                    if not clean_line: continue
+                    clean = line.strip()
+                    if not clean: continue
+                    log_message(f"{clean}", "RX")
                     
-                    log_message(f"{clean_line}", "RX")
-                    
-                    # [cite: 10, 23] Check for READY ('A')
-                    if "A" in clean_line or "READY" in clean_line:
-                        if current_state == STATE_BUSY:
+                    # Unlock if UNO says READY/A
+                    if "READY" in clean or clean.startswith(settings['codes']['uno_ready']):
+                         if current_state == STATE_BUSY:
                             current_state = STATE_RESET_BG
                             last_state_change = time.time()
+                            # Flush buffers to prevent stacked commands
+                            arduino.reset_input_buffer()
                     
-                    # [cite: 10, 24] Check for BUSY ('B')
-                    if "B" in clean_line or "BUSY" in clean_line:
+                    # Lock if UNO says BUSY/B
+                    if "BUSY" in clean or clean.startswith(settings['codes']['uno_busy']):
                         current_state = STATE_BUSY
+        except: pass
 
-        except Exception as e:
-            log_message(f"Serial Error: {e}", "INFO")
-
-    # --- MOTION ---
+    # --- 2. VISION PROCESSING ---
     mask = bg_subtractor.apply(frame)
     motion = cv2.countNonZero(mask)
     viz_frame, live_best_name, live_best_conf = run_live_detection(frame)
     
-    # --- STATE MACHINE ---
+    # --- 3. STATE MACHINE ---
     if current_state == STATE_IDLE:
         pass
 
     elif current_state == STATE_RESET_BG:
-        if time.time() - last_state_change > 2.0:
+        if time.time() - last_state_change > 1.5:
             current_state = STATE_WAITING_OBJECT
             log_message("System Ready.", "INFO")
 
@@ -266,34 +263,60 @@ while True:
             category = class_map[live_best_name]
             log_message(f"MATCH: {live_best_name} -> {category}", "INFO")
             sig = settings['codes']['trash'] if category == "T" else settings['codes']['recyclable']
-            send_to_arduino(sig)
-            current_state = STATE_BUSY
+            
+            # Check if successfully sent
+            if send_to_arduino(sig):
+                current_state = STATE_BUSY
+            else:
+                current_state = STATE_WAITING_OBJECT # Retry
         else:
-            if live_best_name: log_message(f"Unknown: {live_best_name}", "INFO")
+            if live_best_name:
+                log_message(f"Unknown: {live_best_name}", "INFO")
             current_state = STATE_WAITING_OBJECT
 
     elif current_state == STATE_BUSY:
-        cv2.putText(viz_frame, "SORTING...", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        cv2.putText(viz_frame, "SORTING IN PROGRESS...", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-    # --- RENDER ---
+    # --- 4. RENDER ---
     dashboard = draw_dashboard(viz_frame)
     cv2.imshow("Oxyzen EcoBin", dashboard)
 
-    # --- CONTROLS ---
+    # --- 5. CONTROLS (Strict Logic) ---
     key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'): break
-    if key == ord('s'): 
-        current_state = STATE_RESET_BG
-        last_state_change = time.time()
-    if key == ord('r'):
-        current_state = STATE_RESET_BG
-        last_state_change = time.time()
     
-    # [cite: 11] Manual testing keys
-    if key == ord('1'): 
-        send_to_arduino(settings['codes']['trash'])
-    if key == ord('2'): 
-        send_to_arduino(settings['codes']['recyclable'])
+    # [A] ALWAYS ACTIVE: QUIT
+   # [cite: 23] "Q to quit the active session at anytime"
+    if key == ord('q'): 
+        print("[-] User requested Quit.")
+        if arduino:
+            arduino.write(b'X') # Reset UNO
+            time.sleep(0.2)
+        break
+
+    # [B] BUSY LOCKOUT
+   # [cite: 26] "This is key... when UNO is ready for taking new orders"
+    if current_state == STATE_BUSY:
+        # Ignore all other inputs if busy
+        pass 
+    
+    # [C] READY STATE CONTROLS
+    else:
+        if key == ord('s'): 
+            current_state = STATE_RESET_BG
+            last_state_change = time.time()
+        
+        if key == ord('r'):
+            current_state = STATE_RESET_BG
+            last_state_change = time.time()
+        
+        # Manual Triggers
+        if key == ord('1'): 
+            send_to_arduino(settings['codes']['trash'])
+            current_state = STATE_BUSY # Manually force state lock
+            
+        if key == ord('2'): 
+            send_to_arduino(settings['codes']['recyclable'])
+            current_state = STATE_BUSY # Manually force state lock
 
 cap.release()
 if arduino: arduino.close()
