@@ -1,0 +1,34 @@
+{
+  "version": "0.3.3",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "sand",
+      "points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1071.00036
+        ],
+        [
+          1917.00096,
+          1071.00036
+        ],
+        [
+          1917.00096,
+          0.0
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "polygon",
+      "flags": {}
+    }
+  ],
+  "imagePath": "WIN_20251030_17_13_35_Pro.jpg",
+  "imageData": null,
+  "imageHeight": 1080,
+  "imageWidth": 1920
+}

@@ -9,7 +9,7 @@
         "height": 480
     },
     "yolo": {
-        "standard_model": "MODELS/yolov8n.pt",
+        "standard_model": "MODELS/yoloe-v8m-seg-pf.pt",
         "custom_model": "MODELS/UPLIFT_TRAINED.pt",
         "confidence_threshold": 0.5,
         "iou_threshold": 0.4

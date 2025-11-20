@@ -1,0 +1,58 @@
+{
+  "version": "0.3.3",
+  "flags": {},
+  "shapes": [
+    {
+      "label": "drought",
+      "points": [
+        [
+          6.0,
+          0.0
+        ],
+        [
+          6.0,
+          1080.0
+        ],
+        [
+          1917.00096,
+          1080.0
+        ],
+        [
+          1917.00096,
+          0.0
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "polygon",
+      "flags": {}
+    },
+    {
+      "label": "desert",
+      "points": [
+        [
+          6.0,
+          0.0
+        ],
+        [
+          6.0,
+          1080.0
+        ],
+        [
+          1917.00096,
+          1080.0
+        ],
+        [
+          1917.00096,
+          0.0
+        ]
+      ],
+      "group_id": null,
+      "shape_type": "polygon",
+      "flags": {}
+    }
+  ],
+  "imagePath": "WIN_20251116_12_29_24_Pro.jpg",
+  "imageData": null,
+  "imageHeight": 1080,
+  "imageWidth": 1920
+}
