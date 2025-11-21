@@ -1,0 +1,27 @@
+# path: .  <-- If you use absolute paths below, you can comment this out or leave as .
+path: D:\OneDrive\03_PROFESSIONAL\OXYZEN Digital\Digital\GitHub\ECOBIN\TRAINING\DATASETS\batch_01
+
+# These must point to the images relative to where this data.yaml file is sitting
+train: train/images 
+val: val/images
+
+# Replace these with your actual class names from your classes.txt
+names:
+  0: napkin
+  1: banana peel
+  2: bone
+  3: bottle cap
+  4: crushed bottle
+  5: handkerchief
+  6: notepad
+  7: pad
+  8: paper
+  9: paper ball
+  10: paperweight
+  11: plastic piece
+  12: receipt
+  13: resin
+  14: seashell
+  15: stab
+  16: swab
+  17: thimble
