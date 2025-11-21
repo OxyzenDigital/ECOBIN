@@ -1,9 +1,10 @@
 {
-  "version": "0.3.3",
+  "version": "0.4.29",
   "flags": {},
   "shapes": [
     {
       "label": "cotton",
+      "text": "",
       "points": [
         [
           633.00096,
@@ -756,6 +757,7 @@
     },
     {
       "label": "shower cap",
+      "text": "",
       "points": [
         [
           633.00096,
@@ -1532,6 +1534,7 @@
     },
     {
       "label": "hardwood floor",
+      "text": "",
       "points": [
         [
           0.0,
@@ -1556,6 +1559,7 @@
     },
     {
       "label": "dishrag",
+      "text": "",
       "points": [
         [
           633.00096,
@@ -2304,6 +2308,7 @@
     },
     {
       "label": "plank",
+      "text": "",
       "points": [
         [
           0.0,
@@ -2328,6 +2333,7 @@
     },
     {
       "label": "origami",
+      "text": "",
       "points": [
         [
           633.00096,
@@ -3036,6 +3042,7 @@
     },
     {
       "label": "table",
+      "text": "",
       "points": [
         [
           0.0,
@@ -3059,7 +3066,8 @@
       "flags": {}
     },
     {
-      "label": "snowflake",
+      "label": "paper ball",
+      "text": "",
       "points": [
         [
           633.00096,
@@ -3771,7 +3779,8 @@
       "flags": {}
     },
     {
-      "label": "hardwood",
+      "label": "table",
+      "text": "",
       "points": [
         [
           0.0,
@@ -3798,5 +3807,6 @@
   "imagePath": "WIN_20251030_17_35_25_Pro.jpg",
   "imageData": null,
   "imageHeight": 1080,
-  "imageWidth": 1920
+  "imageWidth": 1920,
+  "text": ""
 }
