@@ -65,14 +65,28 @@ except Exception as e:
 # --- AI MODELS ---
 print("[-] Loading Models...")
 viz_threshold = 0.4 
-model_std = YOLO(settings['yolo']['standard_model'])
 
+# Conditionally load Standard Model
+model_std = None
+if settings['yolo'].get('use_standard_model', True):
+    if os.path.exists(settings['yolo']['standard_model']):
+        print("... Loading Standard Model")
+        model_std = YOLO(settings['yolo']['standard_model'])
+    else:
+        print(f"[!] Warning: Standard model enabled but not found at {settings['yolo']['standard_model']}")
+
+# Conditionally load Custom Model
+model_custom = None
 if os.path.exists(settings['yolo']['custom_model']):
+    print("... Loading Custom Model")
     model_custom = YOLO(settings['yolo']['custom_model'])
-    has_custom_model = True
 else:
-    model_custom = model_std
-    has_custom_model = False
+    print("[!] Info: Custom model not found, it will not be used.")
+
+# Exit if no models could be loaded.
+if not model_std and not model_custom:
+    print("[!] CRITICAL ERROR: No models were loaded. Check 'settings.json' paths and flags.")
+    sys.exit()
 
 bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
 
@@ -102,55 +116,59 @@ def send_to_arduino(signal):
 
 def run_live_detection(frame):
     """
-    Run Standard + Custom models.
-    Compare confidence scores to find the single BEST match.
+    Run enabled models.
+    Compare confidence scores to find the single BEST match and visualize only that one.
     """
-    # 1. Run Standard Model
-    results_std = model_std(frame, verbose=False, conf=viz_threshold)[0]
-    
-    # 2. Run Custom Model (If it exists)
-    results_cust = None
-    if has_custom_model:
-        results_cust = model_custom(frame, verbose=False, conf=viz_threshold)[0]
+    all_detections = []
 
-    best_conf = 0
-    best_name = None
-    viz_frame = frame.copy()
-
-    # Helper to process a list of results
-    def process_results(results, label_suffix=""):
-        nonlocal best_conf, best_name
+    # Helper to gather all valid detections
+    def gather_detections(results):
+        if results is None:
+            return
         
         for box in results.boxes:
             conf = float(box.conf[0])
             cls_id = int(box.cls[0])
             name = results.names[cls_id]
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
             
-            # LOGIC: Comparison Tournament
-            # We track the highest confidence seen so far across BOTH models
             if name in class_map:
-                classification = class_map[name]
-                color = (0, 0, 255) if classification == "T" else (0, 255, 0)
-                label = f"{name} [{classification}] {int(conf*100)}%"
-                
-                # If this detection is better than the previous best, it becomes the winner
-                if conf > best_conf:
-                    best_conf = conf
-                    best_name = name
-            else:
-                # Unknown Item (Grey)
-                color = (100, 100, 100) 
-                label = f"{name} (?)"
+                all_detections.append({
+                    "box": list(map(int, box.xyxy[0])),
+                    "name": name,
+                    "conf": conf
+                })
 
-            # Draw Box
-            cv2.rectangle(viz_frame, (x1, y1), (x2, y2), color, 2)
-            cv2.putText(viz_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+    # 1. Run Standard Model (if loaded)
+    if model_std:
+        results_std = model_std(frame, verbose=False, conf=viz_threshold)[0]
+        gather_detections(results_std)
+    
+    # 2. Run Custom Model (if loaded)
+    if model_custom:
+        results_cust = model_custom(frame, verbose=False, conf=viz_threshold)[0]
+        gather_detections(results_cust)
 
-    # Run the processing for both sets of results
-    process_results(results_std)
-    if results_cust:
-        process_results(results_cust)
+    viz_frame = frame.copy()
+    best_name = None
+    best_conf = 0
+
+    # Find the best detection from the aggregated list
+    if all_detections:
+        best_detection = max(all_detections, key=lambda x: x['conf'])
+        best_name = best_detection['name']
+        best_conf = best_detection['conf']
+
+        # Draw only the best one
+        x1, y1, x2, y2 = best_detection['box']
+        name = best_detection['name']
+        conf = best_detection['conf']
+
+        classification = class_map[name]
+        color = (0, 0, 255) if classification == "T" else (0, 255, 0)
+        label = f"{name} [{classification}] {int(conf*100)}%"
+        
+        cv2.rectangle(viz_frame, (x1, y1), (x2, y2), color, 2)
+        cv2.putText(viz_frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
     return viz_frame, best_name, best_conf
 
